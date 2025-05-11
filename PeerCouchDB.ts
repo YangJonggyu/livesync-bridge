@@ -179,4 +179,37 @@ export class PeerCouchDB extends Peer {
         this.man.endWatch();
         return await Promise.resolve();
     }
+
+    async syncOnce(): Promise<void> {
+        const baseDir = this.toLocalPath("");
+        await this.man.ready.promise;
+
+        // 원격 설정 확인 (기존 start 메서드와 동일)
+        await this.man.rawGet<Record<string, any>>(MILESTONE_DOCID);
+
+        // 일회성 동기화 수행
+        return new Promise((resolve) => {
+            this.man.followUpdates(async (entry) => {
+                const d = entry.type == "plain" ? entry.data : new Uint8Array(decodeBinary(entry.data));
+                let path = entry.path.substring(baseDir.length);
+                if (path.startsWith("/")) {
+                    path = path.substring(1);
+                }
+                if (entry.deleted || entry._deleted) {
+                    this.sendLog(`${path} delete detected`);
+                    await this.dispatchDeleted(path);
+                } else {
+                    const docData = { ctime: entry.ctime, mtime: entry.mtime, size: entry.size, deleted: entry.deleted || entry._deleted, data: d };
+                    this.sendLog(`${path} change detected`);
+                    await this.dispatch(path, docData);
+                }
+            }, (entry) => {
+                this.setSetting("since", this.man.since);
+                if (entry.path.indexOf(":") !== -1) return false;
+                return entry.path.startsWith(baseDir);
+            }).then(() => {
+                resolve();
+            });
+        });
+    }
 }

@@ -48,5 +48,13 @@ export class Hub {
             }
         }
     }
-}
 
+    async syncOnce() {
+        const syncPromises = [];
+        for (const p of this.peers) {
+            syncPromises.push(p.syncOnce());
+        }
+        await Promise.all(syncPromises);
+        console.log("One-time synchronization completed!");
+    }
+}

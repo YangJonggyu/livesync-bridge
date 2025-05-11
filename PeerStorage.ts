@@ -1,16 +1,16 @@
-import { LOG_LEVEL_INFO, LOG_LEVEL_NOTICE, LOG_LEVEL_VERBOSE } from "./lib/src/common/types.ts";
-import { PeerStorageConf, FileData } from "./types.ts";
-import { Logger } from "./lib/src/common/logger.ts";
-import { delay, getDocData } from "./lib/src/common/utils.ts";
-import { isPlainText } from "./lib/src/string_and_binary/path.ts";
-import { parse, format, relative, dirname, resolve } from "@std/path";
-import { format as posixFormat, parse as posixParse } from "@std/path/posix"
-import { scheduleOnceIfDuplicated } from "./lib/src/concurrency/lock.ts";
-import { DispatchFun, Peer } from "./Peer.ts";
+import {LOG_LEVEL_INFO, LOG_LEVEL_NOTICE, LOG_LEVEL_VERBOSE} from "./lib/src/common/types.ts";
+import {FileData, PeerStorageConf} from "./types.ts";
+import {Logger} from "./lib/src/common/logger.ts";
+import {delay, getDocData} from "./lib/src/common/utils.ts";
+import {isPlainText} from "./lib/src/string_and_binary/path.ts";
+import {dirname, format, parse, relative, resolve} from "@std/path";
+import {format as posixFormat, parse as posixParse} from "@std/path/posix"
+import {scheduleOnceIfDuplicated} from "./lib/src/concurrency/lock.ts";
+import {DispatchFun, Peer} from "./Peer.ts";
 import chokidar from "chokidar";
-import { walk } from 'fs/walk';
+import {walk} from 'fs/walk';
 
-import { scheduleTask } from "./lib/src/concurrency/task.ts";
+import {scheduleTask} from "./lib/src/concurrency/task.ts";
 
 export class PeerStorage extends Peer {
     declare config: PeerStorageConf;
@@ -123,7 +123,7 @@ export class PeerStorage extends Peer {
             // const strResult = result.join("\n");
             return true;
         } catch (ex) {
-            this.normalLog("Processor: Error on processing");;
+            this.normalLog("Processor: Error on processing");
             // this.normalLog(ex);
             this.normalLog(JSON.stringify(ex, null, 2));
             return false;
@@ -188,14 +188,12 @@ export class PeerStorage extends Peer {
     }
 
     toPosixPath(path: string) {
-        const ret = posixFormat(parse(path));
         // this.debugLog(`**TOPOSIX ${path} -> ${ret}`)
-        return ret;
+        return posixFormat(parse(path));
     }
     toStoragePath(path: string) {
-        const ret = resolve(format(posixParse(path)));
         // this.debugLog(`**TOSTORAGE ${path} -> ${ret}`)
-        return ret;
+        return resolve(format(posixParse(path)));
     }
 
     async writeFileStat(pathSrc: string, statSrc?: Deno.FileInfo) {
@@ -225,8 +223,8 @@ export class PeerStorage extends Peer {
         if (!last) return true;
         const fileStat = `${stat.mtime?.getTime() ?? 0}-${stat.size}`;
         // console.log(`RVX:${fileStat}`);
-        if (last !== fileStat) return true;
-        return false;
+        return last !== fileStat;
+
     }
     watcherDeno?: Deno.FsWatcher;
 
@@ -327,5 +325,24 @@ export class PeerStorage extends Peer {
         this.watcherDeno?.close();
         this.watcherDeno = undefined;
         return await Promise.resolve();
+    }
+
+    async syncOnce(): Promise<void> {
+        const lP = this.toStoragePath(this.toLocalPath("."));
+        this.normalLog(`Performing one-time synchronization scan...`);
+
+        // 모든 파일 스캔 및 동기화
+        for await (const entry of walk(lP)) {
+            if (entry.isFile) {
+                const ePath = this.toPosixPath(relative(this.toLocalPath("."), entry.path));
+                if (await this.isChanged(ePath)) {
+                    this.debugLog(`Change detected: ${ePath}`);
+                    await this.dispatch(entry.path);
+                }
+            }
+        }
+
+        this.normalLog(`One-time synchronization scan completed`);
+        return Promise.resolve();
     }
 }

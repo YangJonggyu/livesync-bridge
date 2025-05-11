@@ -11,9 +11,9 @@ const configFile = Deno.env.get(`${KEY}CONFIG`) || "./dat/config.json";
 console.log("LiveSync Bridge is now starting...");
 let config: Config = { peers: [] };
 const flags = parseArgs(Deno.args, {
-    boolean: ["reset"],
+    boolean: ["reset", "once"],
     // string: ["version"],
-    default: { reset: false },
+    default: { reset: false, once: false },
 });
 if (flags.reset) {
     localStorage.clear();
@@ -27,4 +27,10 @@ try {
 }
 console.log("LiveSync Bridge is now started!");
 const hub = new Hub(config);
-hub.start();
+if (flags.once) {
+    await hub.syncOnce();
+    console.log("One-time synchronization completed. Exiting...");
+    Deno.exit(0);
+} else {
+    hub.start();
+}
